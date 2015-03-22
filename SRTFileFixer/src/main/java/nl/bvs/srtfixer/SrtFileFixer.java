@@ -4,6 +4,7 @@ import nl.bvs.srtfixer.util.Constants;
 import nl.bvs.srtfixer.util.FileFinder;
 
 import java.io.*;
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -24,7 +25,7 @@ public class SrtFileFixer extends BaseFixer {
             "-\"", "--\"", " -\"", " --\"", "- \"", "-- \"", " - \"", " -- \"", "[", " [", " [ ", "(", " (", " ( "};
 
     /** Some words to ignore while fixing. First 4 are the only English words that start with a double l. Wtf is a llano? */
-    private static final String[] IGNORE_LIST = {"llama", "llamas", "llano", "llanos", "llorar"};
+    private static final List<String> IGNORE_LIST = Arrays.asList("llama", "llamas", "llano", "llanos", "llorar");
 
     /** Some words are wrongfully fixed. Starting with some Roman numerals. */
     private static final String[][] FIX_LIST = {{"ll", "II"}, {"Il", "II"}, {"IlI", "III"}, {"IlI:", "III:"}, {"Vll", "VII"}, {"VIlI", "VIII"},
@@ -146,7 +147,7 @@ public class SrtFileFixer extends BaseFixer {
         fixedLine = fixCapsedI(fixedLine);
 
         // fix 'l ', lf, ln, ls, lt, l'm l've etc at start of the line
-        if (shouldFixLineStart(fixedLine)) {
+        if (shouldFixLineStart(fixedLine, "l")) {
             // this may not cover everything, but it will cover 99%
             fixedLine = fixLineStart(fixedLine, "l ", "ln ", "ls ", "lt ", "lf ", "l'", "lc", "lsn't ", "lt'", "lr", "ld", "lb", "lc",
                     "lg", "lh", "lj", "lk", "ll", "lm", "lp", "lq", "lr", "lv", "lw", "lx", "lz");
@@ -280,9 +281,9 @@ public class SrtFileFixer extends BaseFixer {
      * @param line the line to check
      * @return true if the line start needs to be fixed, false if not
      */
-    public boolean shouldFixLineStart(final String line) {
-        for (final String fixIdentifier : LINE_STARTS) {
-            if (line.startsWith(fixIdentifier + "l")) {
+    public boolean shouldFixLineStart(final String line, final String startValue) {
+        for (final String lineStarter : LINE_STARTS) {
+            if (line.startsWith(lineStarter + startValue)) {
                 return true;
             }
         }
@@ -409,12 +410,7 @@ public class SrtFileFixer extends BaseFixer {
      * @return true if it is, false if it isn't
      */
     private boolean isOnIgnoreList(final String part) {
-        for (final String ignoreWord : IGNORE_LIST) {
-            if (ignoreWord.equals(part)) {
-                return true;
-            }
-        }
-        return false;
+        return IGNORE_LIST.contains(part);
     }
 
     /**
@@ -426,10 +422,8 @@ public class SrtFileFixer extends BaseFixer {
      */
     private boolean startsWithAny(final String anyString, final String... startValues) {
         for (final String startValue : startValues) {
-            for (final String lineStarter : LINE_STARTS) {
-                if (anyString.startsWith(lineStarter + startValue)) {
-                    return true;
-                }
+            if (shouldFixLineStart(anyString, startValue)) {
+                return true;
             }
         }
         return false;
