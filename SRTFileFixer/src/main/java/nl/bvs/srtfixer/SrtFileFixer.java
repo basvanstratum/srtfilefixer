@@ -4,10 +4,6 @@ import nl.bvs.srtfixer.util.Constants;
 import nl.bvs.srtfixer.util.FileFinder;
 
 import java.io.*;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
 import java.util.List;
 
 /**
@@ -22,7 +18,7 @@ import java.util.List;
  * This little class tries to fix many of these issues. And usually it fixes way
  * more than it breaks, so yay!
  */
-public class SrtFileFixer {
+public class SrtFileFixer extends BaseFixer {
     /** Lines can start with various things such as dashes or quotes. */
     private static final String[] LINE_STARTS = {"", "\"", "-", "--", " -", " --", "- ", "-- ", " - ", " -- ",
             "-\"", "--\"", " -\"", " --\"", "- \"", "-- \"", " - \"", " -- \"", "[", " [", " [ ", "(", " (", " ( "};
@@ -41,28 +37,21 @@ public class SrtFileFixer {
      * @param args if you enjoy passing about arguments that are never used, this is the place to do it!
      */
     public static void main(final String[] args) {
-        System.out.println("Processing directory :: " + Constants.ROOT_DIR);
+        System.out.println("Processing directory :: " + Constants.FILEFIXER_ROOT_DIR);
+        new SrtFileFixer().process();
+    }
 
+    @Override
+    protected void process() {
         // collect all srt files in the root dir
-        final List<File> srtFiles = new FileFinder().collect(new File(Constants.ROOT_DIR), Constants.SRT_EXTENSION);
-
-        // create the backup directory if it does not exist.
-        File temp;
-        if (Constants.MAKE_BACKUPS) {
-            temp = new File(Constants.BACKUP_DIR);
-            final boolean tempDirMade = temp.mkdirs();
-            if (!temp.exists() && !tempDirMade) {
-                System.err.println("Failed to make the temp dir.");
-                return;
-            }
-        }
+        final List<File> srtFiles = new FileFinder().collect(new File(Constants.FILEFIXER_ROOT_DIR), Constants.SRT_EXTENSION);
 
         // process each file, making a backup first if it is enabled
         for (final File srtFile : srtFiles) {
             System.out.println("Processing subtitle file :: " + srtFile.getName());
 
             if (Constants.MAKE_BACKUPS) {
-                makeBackup(temp, srtFile);
+                backupFile(srtFile);
             }
 
             fix(srtFile);
@@ -70,94 +59,31 @@ public class SrtFileFixer {
     }
 
     /**
-     * Makes a backup of the original file.
-     *
-     * @param backupDir the directory to place the backup in
-     * @param fileToBackup the file to backup
+     * Tries to fix as many issues in the file, hopefully without introducing any new problems.
      */
-    private static void makeBackup(final File backupDir, final File fileToBackup) {
-        // make a backup
-        Path source = Paths.get(fileToBackup.getAbsolutePath());
-        Path destination = Paths.get(backupDir.getAbsolutePath() + File.separator + fileToBackup.getName());
-        try {
-            Files.copy(source, destination, StandardCopyOption.REPLACE_EXISTING);
-        } catch (IOException e) {
-            // stuff may go wrong sometimes - e.g. locked files - tough luck
-            e.printStackTrace();
-        }
-    }
-
-    /**
-     * Tries to fix as many issues in the file, hopefully without introducing any
-     * new problems.
-     *
-     * @param srtFile the file to try and fix
-     */
-    private static void fix(final File srtFile) {
-        // reset
+    @Override
+    protected void fixFile(final BufferedReader reader, final BufferedWriter writer) throws Exception {
+        // init
         int lineCounter = 1;
         boolean lastLineWasEmpty = false;
 
-        // initialise
-        String rootDir = srtFile.getParent();
-        String oldFileName = rootDir + File.separator + srtFile.getName();
-        String tmpFileName = rootDir + File.separator + "tmp_" + srtFile.getName();
+        String line;
+        while ((line = reader.readLine()) != null) {
+            final String fixedLine = fixLine(line);
 
-        BufferedReader br = null;
-        BufferedWriter bw = null;
-        try {
-            br = new BufferedReader(new FileReader(oldFileName));
-            bw = new BufferedWriter(new FileWriter(tmpFileName));
-            String line;
-            while ((line = br.readLine()) != null) {
-                final String fixedLine = fixLine(line);
-
-                if (fixedLine != null && !"".equals(fixedLine.trim())) {
-                    if (lastLineWasEmpty && lineIsNumberAboveZero(fixedLine)) {
-                        bw.newLine();
-                        lineCounter++;
-                        bw.write("" + lineCounter);
-                    } else {
-                        lastLineWasEmpty = false;
-                        bw.write(fixedLine);
-                    }
-                    bw.newLine();
+            if (fixedLine != null && !"".equals(fixedLine.trim())) {
+                if (lastLineWasEmpty && lineIsNumberAboveZero(fixedLine)) {
+                    writer.newLine();
+                    lineCounter++;
+                    writer.write(lineCounter);
                 } else {
-                    lastLineWasEmpty = true;
+                    lastLineWasEmpty = false;
+                    writer.write(fixedLine);
                 }
+                writer.newLine();
+            } else {
+                lastLineWasEmpty = true;
             }
-        } catch (Exception e) {
-            e.printStackTrace();
-            return;
-        } finally {
-            try {
-                if (br != null) {
-                    br.close();
-                }
-            } catch (IOException e) {
-                System.err.println("Couldn't close the BR.");
-            }
-            try {
-                if (bw != null) {
-                    bw.close();
-                }
-            } catch (IOException e) {
-                System.err.println("Couldn't close the BW.");
-            }
-        }
-
-        // Once everything is complete, delete old file..
-        File oldFile = new File(oldFileName);
-        final boolean deleted = oldFile.delete();
-        if (!deleted) {
-            System.err.println("Error deleting the old file.");
-        }
-
-        // And rename tmp file's name to old file name
-        File newFile = new File(tmpFileName);
-        final boolean renamed = newFile.renameTo(oldFile);
-        if (!renamed) {
-            System.err.println("Error renaming the temp file.");
         }
     }
 
@@ -169,7 +95,7 @@ public class SrtFileFixer {
      * @param line if the line is one that only contains a number
      * @return true if it is, false if it isn't
      */
-    private static boolean lineIsNumberAboveZero(final String line) {
+    private boolean lineIsNumberAboveZero(final String line) {
         try {
             return Integer.parseInt(line) > 1;
         } catch(final NumberFormatException nfe) {
@@ -191,7 +117,7 @@ public class SrtFileFixer {
      * @param line the line of text to attempt to fix
      * @return the line fixed as much as possible
      */
-    private static String fixLine(final String line) {
+    private String fixLine(final String line) {
         // nothing to fix
         if (line == null || "".equals(line.trim())) {
             return null;
@@ -255,7 +181,7 @@ public class SrtFileFixer {
      * @param line the line to fix
      * @return the fixed line
      */
-    private static String fixCapsOnlyLines(final String line) {
+    private String fixCapsOnlyLines(final String line) {
         if (line.matches("^[0-9A-Zl\\[\\]:'\"\\(\\)\\- ]*$")) {
             return line.replaceAll("l", "I");
         }
@@ -272,7 +198,7 @@ public class SrtFileFixer {
      * @param line the line to fix
      * @return the fixed line
      */
-    private static String fixCapsedI(final String line) {
+    private String fixCapsedI(final String line) {
         String fixedLine = line;
 
         // I in a word, not first letter
@@ -338,7 +264,7 @@ public class SrtFileFixer {
      * @param line the line to fix
      * @return the line with fixed quotes
      */
-    private static String changeQuotes(final String line) {
+    private String changeQuotes(final String line) {
         String fixedLine = line.replaceAll("`", "'");
         fixedLine = fixedLine.replaceAll("’", "'");
         fixedLine = fixedLine.replaceAll("“", "\"");
@@ -354,7 +280,7 @@ public class SrtFileFixer {
      * @param line the line to check
      * @return true if the line start needs to be fixed, false if not
      */
-    public static boolean shouldFixLineStart(final String line) {
+    public boolean shouldFixLineStart(final String line) {
         for (final String fixIdentifier : LINE_STARTS) {
             if (line.startsWith(fixIdentifier + "l")) {
                 return true;
@@ -370,7 +296,7 @@ public class SrtFileFixer {
      * @param possibleValues the values the line could start with
      * @return the fixed line
      */
-    private static String fixLineStart(final String line, final String... possibleValues) {
+    private String fixLineStart(final String line, final String... possibleValues) {
         for (final String possibleValue : possibleValues) {
             for (final String lineStarter : LINE_STARTS) {
                 if (line.startsWith(lineStarter + possibleValue)) {
@@ -387,7 +313,7 @@ public class SrtFileFixer {
      * @param lineToFix the line to fix
      * @return the fixed line, without the removed HTML tags
      */
-    private static String removeHTMLTags(final String lineToFix) {
+    private String removeHTMLTags(final String lineToFix) {
         String fixedLine = lineToFix;
 
         fixedLine = fixedLine.replaceAll("<b>", "");
@@ -412,7 +338,7 @@ public class SrtFileFixer {
      * @param line the the line to fix
      * @return the fixed line
      */
-    private static String fixWordStarts(final String line) {
+    private String fixWordStarts(final String line) {
         final String[] parts = line.split(" ");
 
         final StringBuilder lineBuilder = new StringBuilder();
@@ -482,7 +408,7 @@ public class SrtFileFixer {
      * @param part the word to check
      * @return true if it is, false if it isn't
      */
-    private static boolean isOnIgnoreList(final String part) {
+    private boolean isOnIgnoreList(final String part) {
         for (final String ignoreWord : IGNORE_LIST) {
             if (ignoreWord.equals(part)) {
                 return true;
@@ -498,7 +424,7 @@ public class SrtFileFixer {
      * @param startValues the possible start values
      * @return true if anyString starts with one of the given startValues, false if not
      */
-    private static boolean startsWithAny(final String anyString, final String... startValues) {
+    private boolean startsWithAny(final String anyString, final String... startValues) {
         for (final String startValue : startValues) {
             for (final String lineStarter : LINE_STARTS) {
                 if (anyString.startsWith(lineStarter + startValue)) {
@@ -515,7 +441,7 @@ public class SrtFileFixer {
      * @param line the line to fix
      * @return the fixed line
      */
-    private static String fixMistakes(final String line) {
+    private String fixMistakes(final String line) {
         final String[] parts = line.split(" ");
         final StringBuilder lineBuilder = new StringBuilder();
 
