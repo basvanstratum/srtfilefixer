@@ -6,10 +6,14 @@ import java.io.*;
 
 public abstract class BaseFixer {
     /** Helps backing up files in case you're not feeling very confident. */
-    private static final BackupUtil BACKUP_UTIL = new BackupUtil();
+    private BackupUtil backupUtil;
 
     protected abstract void process();
     protected abstract void fixFile(final BufferedReader reader, final BufferedWriter writer) throws Exception;
+
+    public BaseFixer() {
+        backupUtil = new BackupUtil();
+    }
 
     protected final void fix(final File fileToFix) {
         if (!fileToFix.exists()) {
@@ -46,6 +50,6 @@ public abstract class BaseFixer {
     }
 
     protected final void backupFile(final File fileToBackup) {
-        BACKUP_UTIL.makeBackup(fileToBackup);
+        backupUtil.makeBackup(fileToBackup);
     }
 }
