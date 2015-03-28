@@ -76,7 +76,7 @@ public class SrtFileFixer extends BaseFixer {
                 if (lastLineWasEmpty && lineIsNumberAboveZero(fixedLine)) {
                     writer.newLine();
                     lineCounter++;
-                    writer.write(lineCounter);
+                    writer.write("" + lineCounter);
                 } else {
                     lastLineWasEmpty = false;
                     writer.write(fixedLine);
